@@ -1,20 +1,24 @@
 import java.io.FileInputStream;
 import java.io.PrintStream;
-import java.lang.reflect.Array;
 import java.util.*;
 
 public class Main {
     Scanner scanner;
     ArrayList<String> states;
     ArrayList<String> alphabet;
-    ArrayList<String> initialStates;
+    String initialState;
     ArrayList<String> acceptingStates;
     ArrayList<String> transitions;
+    String eps = "eps";
+    String empty_set = "{}";
     AdjacencyMatrixGraph<String, String> graph;
+    HashMap<Integer, HashMap<Integer, HashMap<Integer, String>>> R = new HashMap<>();
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         try {
             new Main().go();
+        } catch (NullPointerException e) {
+           throw new Exception();
         } catch (Exception e) {
             System.out.println(e.getMessage());
         }
@@ -27,7 +31,8 @@ public class Main {
         this.scanner = new Scanner(System.in);
         this.states = checkLine("states");
         this.alphabet = checkLine("alpha");
-        this.initialStates = checkLine("initial");
+        ArrayList<String> initialStates = checkLine("initial");
+        this.initialState = initialStates.get(0);
         this.acceptingStates = checkLine("accepting");
         this.transitions = checkLine("trans");
 
@@ -37,10 +42,97 @@ public class Main {
             String[] splitted = x.split(">");
             graph.addEdge(graph.findVertex(splitted[0]), graph.findVertex(splitted[2]), splitted[1]);
         });
+
+        System.out.println(KleeneAlgorithm());
     }
 
-    private String KleeneAlgorithm(int vertices) {
-        HashMap<Integer, HashMap<Integer, HashMap<Integer, String>>> R = new HashMap<>();
+    private String KleeneAlgorithm() {
+        initialize();
+        mainLoop();
+        return buildAnswer();
+    }
+
+    private void initialize() {
+        for (int i = 0; i < this.graph.numberOfVertices(); i++) {
+            for (int j = 0; j < this.graph.numberOfVertices(); j++) {
+                if (!R.containsKey(i))
+                    R.put(i, new HashMap<>());
+                if (!R.get(i).containsKey(j))
+                    R.get(i).put(j, new HashMap<>());
+                Graph.Vertex<String> from = this.graph.getVertex(i);
+                Graph.Vertex<String> to = this.graph.getVertex(j);
+
+                if (!this.graph.hasEdge(from, to))
+                    continue;
+
+                for (Graph.Edge<String, String> edge : this.graph.edgesFrom(this.graph.getVertex(i))) {
+                    if (edge.getTo().equals(this.graph.getVertex(j))) {
+                        HashMap<Integer, String> regexps = R.get(this.graph.getIndex(from)).get(this.graph.getIndex(to));
+                        boolean isInitialized = regexps.containsKey(-1);
+                        if (!isInitialized) {
+                            regexps.put(-1, edge.getWeight());
+                        } else {
+                            regexps.put(-1, regexps.get(-1) + "|" + edge.getWeight());
+                        }
+                    }
+                }
+
+            }
+        }
+        for (int i = 0; i < this.graph.numberOfVertices(); i++) {
+            Graph.Vertex<String> curr = this.graph.getVertex(i);
+            HashMap<Integer, String> regexps = R.get(this.graph.getIndex(curr)).get(this.graph.getIndex(curr));
+            boolean isInitialized = regexps.containsKey(-1);
+            if (!isInitialized) {
+                regexps.put(-1, eps);
+            } else {
+                regexps.put(-1, regexps.get(-1) + "|" + eps);
+            }
+        }
+    }
+
+    private void mainLoop() {
+        for (int k = 0; k < this.graph.numberOfVertices(); k++) {
+            for (int i = 0; i < this.graph.numberOfVertices(); i++) {
+                for (int j = 0; j < this.graph.numberOfVertices(); j++) {
+                    Graph.Vertex<String> from = this.graph.getVertex(i);
+                    Graph.Vertex<String> to = this.graph.getVertex(j);
+                    String regexp = R.get(i).get(k).get(k - 1);
+                    if (regexp == null)
+                        regexp = empty_set;
+                    String first = "(" + regexp + ")";
+
+                    regexp = R.get(k).get(k).get(k - 1);
+                    if (regexp == null)
+                        regexp = empty_set;
+                    String second = "(" + regexp + ")*";
+
+                    regexp = R.get(k).get(j).get(k - 1);
+                    if (regexp == null)
+                        regexp = empty_set;
+                    String third = "(" + regexp + ")";
+
+                    regexp = R.get(i).get(j).get(k - 1);
+                    if (regexp == null)
+                        regexp = empty_set;
+                    String fourth = "|(" + regexp + ")";
+                    R.get(i).get(j).put(k, first + second + third + fourth);
+                }
+            }
+        }
+    }
+
+    private String buildAnswer() {
+        int n = this.graph.numberOfVertices() - 1;
+        StringBuilder sb = new StringBuilder();
+        for (String finalState : this.acceptingStates) {
+            String regexp = R.get(this.graph.getIndex(initialState)).get(this.graph.getIndex(finalState)).get(n);
+            if (sb.length() == 0)
+                sb.append(regexp);
+            else
+                sb.append("|").append(regexp);
+        }
+        return sb.toString();
     }
 
     private void checkTransitions(ArrayList<String> states, ArrayList<String> alphabet, ArrayList<String> transitions) throws Exception {
@@ -289,7 +381,7 @@ interface Graph<V, E> {
  * @since 2021-04-21
  */
 class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
-    Graph.Edge<V, E>[][] adjMatrix;
+    HashSet<Graph.Edge<V, E>>[][] adjMatrix;
 
     /**
      * indices and vertices have one-to-one mapping
@@ -299,7 +391,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
 
     public AdjacencyMatrixGraph() {
         int initialSize = 0;
-        this.adjMatrix = (Graph.Edge<V, E>[][]) new Graph.Edge[initialSize][initialSize];
+        this.adjMatrix = (HashSet<Edge<V, E>>[][]) new HashSet[initialSize][initialSize];
         this.vertices = new ArrayList<>();
         this.indices = new HashMap<>();
     }
@@ -319,7 +411,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
         this.indices.put(v, this.vertices.size());
         this.vertices.add(v);
         int newSize = this.vertices.size();
-        Graph.Edge<V, E>[][] temp = (Graph.Edge<V, E>[][]) new Graph.Edge[newSize][newSize];
+        HashSet<Graph.Edge<V, E>>[][] temp = (HashSet<Edge<V, E>>[][]) new HashSet[newSize][newSize];
         for (int i = 0; i < this.adjMatrix.length; i++) {
             System.arraycopy(this.adjMatrix[i], 0, temp[i], 0, this.adjMatrix[i].length);
         }
@@ -345,7 +437,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
         this.vertices.remove(this.vertices.size() - 1);
 
         int newSize = this.vertices.size();
-        Graph.Edge<V, E>[][] temp = (Graph.Edge<V, E>[][]) new Graph.Edge[newSize][newSize];
+        HashSet<Graph.Edge<V, E>>[][] temp = (HashSet<Edge<V, E>>[][]) new HashSet[newSize][newSize];
 
         for (int i = 0; i < vertexIndex; i++) {
             for (int j = 0; j < vertexIndex; j++) {
@@ -379,7 +471,9 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
         if (from == null || to == null)
             return null;
         Graph.Edge<V, E> edge = new Graph.Edge<>(from, to, weight);
-        this.adjMatrix[this.indices.get(from)][this.indices.get(to)] = edge;
+        if (this.adjMatrix[this.indices.get(from)][this.indices.get(to)] == null)
+            this.adjMatrix[this.indices.get(from)][this.indices.get(to)] = new HashSet<>();
+        this.adjMatrix[this.indices.get(from)][this.indices.get(to)].add(edge);
         return edge;
     }
 
@@ -392,20 +486,20 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
     public void removeEdge(Graph.Edge<V, E> e) { //O(1)
         if (e == null)
             return;
-        this.adjMatrix[this.indices.get(e.getFrom())][this.indices.get(e.getTo())] = null;
+        this.adjMatrix[this.indices.get(e.getFrom())][this.indices.get(e.getTo())].remove(e);
     }
 
     /**
-     * @param v - reference to a vertex for which to return edges going outside
+     * @param from - reference to a vertex for which to return edges going outside
      * @return collection of references to edges which go outside from the vertex v references to
      */
     @Override
-    public Collection<Graph.Edge<V, E>> edgesFrom(Graph.Vertex<V> v) { //O(n)
-        if (v == null)
+    public Collection<Graph.Edge<V, E>> edgesFrom(Graph.Vertex<V> from) { //O(n)
+        if (from == null)
             return new ArrayList<>();
-        int index = this.indices.get(v);
+        int index = this.indices.get(from);
         Collection<Graph.Edge<V, E>> edgesFrom = new ArrayList<>();
-        Arrays.stream(this.adjMatrix[index]).filter(Objects::nonNull).forEach(edgesFrom::add);
+        Arrays.stream(this.adjMatrix[index]).filter(Objects::nonNull).forEach(x->x.forEach(edgesFrom::add));
         return edgesFrom;
     }
 
@@ -419,9 +513,13 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
             return new ArrayList<>();
         int index = this.indices.get(v);
         Collection<Graph.Edge<V, E>> edgesTo = new ArrayList<>();
-        for (Graph.Edge<V, E>[] row : this.adjMatrix) {
-            if (row[index] != null)
-                edgesTo.add(row[index]);
+        for (HashSet<Graph.Edge<V, E>>[] row : this.adjMatrix) {
+            if (row[index] == null)
+                continue;
+            for (Edge<V, E> edge : row[index]) {
+                if (edge.getTo().equals(v))
+                    edgesTo.add(edge);
+            }
         }
         return edgesTo;
     }
@@ -450,7 +548,11 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
         Graph.Vertex<V> to = this.findVertex(toValue);
         if (from == null || to == null)
             return null;
-        return this.adjMatrix[this.indices.get(from)][this.indices.get(to)];
+        for (Edge<V, E> edge : this.adjMatrix[this.indices.get(from)][this.indices.get(to)]) {
+            if (edge.getFrom().equals(from) && edge.getTo().equals(to))
+                return edge;
+        }
+        return null;
     }
 
     /**
@@ -464,15 +566,28 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
     public boolean hasEdge(Graph.Vertex<V> from, Graph.Vertex<V> to) {
         if (from == null || to == null)
             return false;
-        return this.adjMatrix[this.indices.get(from)][this.indices.get(to)] != null;
+        if(this.adjMatrix[this.indices.get(from)][this.indices.get(to)]!=null) {
+            for (Edge<V, E> edge : this.adjMatrix[this.indices.get(from)][this.indices.get(to)]) {
+                if (edge.getFrom().equals(from) && edge.getTo().equals(to))
+                    return true;
+            }
+        }
+        return false;
     }
 
     public int getIndex(V value) {
-        return this.indices.get(findVertex(value));
+        return this.getIndex(findVertex(value));
+    }
+
+    public int getIndex(Vertex<V> vertex) {
+        return this.indices.get(vertex);
     }
 
     public Vertex<V> getVertex(int index) {
         return this.vertices.get(index);
     }
 
+    public int numberOfVertices() {
+        return this.vertices.size();
+    }
 }
