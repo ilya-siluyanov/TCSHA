@@ -13,6 +13,11 @@ public class Main {
     ArrayList<String> transitions;
     String eps = "eps";
     String empty_set = "{}";
+    public static final String STATES = "states";
+    public static final String ALPHA = "alpha";
+    public static final String INITIAL = "initial";
+    public static final String ACCEPTING = "accepting";
+    public static final String TRANS = "trans";
     AdjacencyMatrixGraph<String, String> graph;
     HashMap<Integer, HashMap<Integer, HashMap<Integer, String>>> R = new HashMap<>();
 
@@ -23,6 +28,9 @@ public class Main {
             new Main().go();
         } catch (Exception e) {
             e.printStackTrace();
+            if(e.getMessage()==null){
+                e.printStackTrace(System.out);
+            }
             switch (e.getMessage()) {
                 case "E0":
                     System.out.print("Error:\nE0: Input file is malformed");
@@ -46,79 +54,61 @@ public class Main {
         }
     }
 
-    //TODO: add constraints
     private void go() throws Exception {
         this.scanner = new Scanner(System.in);
-        this.states = parseLine("states");
-        this.alphabet = parseLine("alpha");
-        ArrayList<String> initialStates = parseLine("initial");
+        this.states = parseLine(STATES);
+        this.alphabet = parseLine(ALPHA);
+        ArrayList<String> initialStates = parseLine(INITIAL);
         if (initialStates.size() != 1)
             throw new Exception("E4");
         this.initialState = initialStates.get(0);
-        this.acceptingStates = parseLine("accepting");
-        this.transitions = parseLine("trans");
+        this.acceptingStates = parseLine(ACCEPTING);
+        this.transitions = parseLine(TRANS);
 
         this.graph = new AdjacencyMatrixGraph<>();
         this.states.forEach(graph::addVertex);
         Exception[] e = new Exception[1];
-        boolean[] isFound = new boolean[1];
         this.transitions.forEach(x -> {
-            if(isFound[0])
+            if (e[0]!=null)
                 return;
             String[] splitted = x.split(">");
+            if (splitted.length != 3) {
+                e[0] = new Exception("E0");
+            }
             if (!alphabet.contains(splitted[1])) {
-                isFound[0] = true;
                 e[0] = new Exception("E3", new Exception(splitted[1]));
                 return;
             }
             for (Graph.Edge<String, String> edge : graph.edgesFrom(graph.findVertex(splitted[0]))) {
                 if (splitted[1].equals(edge.getWeight())) {
-                    isFound[0] = true;
                     e[0] = new Exception("E5");
                     return;
                 }
             }
             if (!states.contains(splitted[0])) {
-                isFound[0] = true;
                 e[0] = new Exception("E1", new Exception(splitted[0]));
                 return;
             }
             if (!states.contains(splitted[2])) {
-                isFound[0] = true;
                 e[0] = new Exception("E1", new Exception(splitted[2]));
                 return;
             }
-            graph.addEdge(graph.findVertex(splitted[0]), graph.findVertex(splitted[2]), splitted[1]);
+            Graph.Vertex<String> from = graph.findVertex(splitted[0]);
+            Graph.Vertex<String> to = graph.findVertex(splitted[2]);
+            graph.addEdge(from, to, splitted[1]);
+
         });
         if (e[0] != null)
             throw e[0];
         if (!this.graph.isConnected()) {
             e[0] = new Exception("E2");
         }
-
         if (e[0] != null)
             throw e[0];
         System.out.println(KleeneAlgorithm());
     }
 
-    private void checkTransitions(ArrayList<String> states, ArrayList<String> alphabet, ArrayList<String> transitions) throws Exception {
-        for (String transition : transitions) {
-            String[] splitted = transition.split(">");
-            if (splitted.length != 3) {
-                throw new Exception("E0");
-            }
-        }
-    }
-
-    private void checkBelongingToStates(ArrayList<String> states, ArrayList<String> stateList) throws Exception {
-        for (String state : states) {
-            if (!states.contains(state)) {
-                throw new Exception("E1");
-            }
-        }
-    }
-
-    private ArrayList<String> parseLine(String name) throws Exception {
+    private ArrayList<String> parseLine(String arrayName) throws Exception {
         if (!scanner.hasNextLine()) {
             throw new Exception("EO");
         }
@@ -126,9 +116,6 @@ public class Main {
         if (line.length != 2) {
             throw new Exception("EO");
         }
-//        if (!line[0].equals(name)) {
-//            throw new Exception("EO");
-//        }
         if (!line[1].startsWith("[") || !line[1].endsWith("]")) {
             throw new Exception("EO");
         }
@@ -136,14 +123,14 @@ public class Main {
         for (int i = 1; i < line[1].length() - 1; i++) sb.append(line[1].charAt(i));
         line[1] = sb.toString();
         String[] arguments = line[1].split(",");
-        arguments = Arrays.stream(arguments).filter(x->!x.isBlank()).toArray(String[]::new);
+        arguments = Arrays.stream(arguments).filter(x -> !x.isBlank()).toArray(String[]::new);
         ArrayList<String> result = new ArrayList<>();
         for (String argument : arguments) {
-            if (name.equals("initial") || name.equals("accepting")) {
+            if (arrayName.equals(INITIAL) || arrayName.equals(ACCEPTING)) {
                 if (!this.states.contains(argument))
                     throw new Exception("E1", new Exception(argument));
             }
-            if (name.equals("trans")) {
+            if (arrayName.equals(TRANS)) {
                 result.add(argument);
                 continue;
             }
@@ -154,12 +141,12 @@ public class Main {
             } catch (NumberFormatException ignored) {
             }
             for (char x : argument.toCharArray()) {
-                if (name.equals("alpha")) {
-                    if (!(isAlpha(x) || isNumber(x) || x == '_')) {
+                if (arrayName.equals(ALPHA)) {
+                    if (!(isAlpha(x) || isDigit(x) || x == '_')) {
                         throw new Exception("E0");
                     }
                 } else {
-                    if (!(isAlpha(x) || isNumber(x))) {
+                    if (!(isAlpha(x) || isDigit(x))) {
                         throw new Exception("E0");
                     }
                 }
@@ -174,7 +161,7 @@ public class Main {
         return ('a' <= x && x <= 'z') || ('A' <= x && x <= 'Z');
     }
 
-    private boolean isNumber(char x) {
+    private boolean isDigit(char x) {
         return '0' <= x && x <= '9';
     }
 
@@ -186,44 +173,32 @@ public class Main {
 
     private void initialize() {
         for (int i = 0; i < this.graph.numberOfVertices(); i++) {
+            R.put(i, new HashMap<>());
             for (int j = 0; j < this.graph.numberOfVertices(); j++) {
-                if (!R.containsKey(i))
-                    R.put(i, new HashMap<>());
-                if (!R.get(i).containsKey(j))
-                    R.get(i).put(j, new HashMap<>());
+                R.get(i).put(j, new HashMap<>());
+                R.get(i).get(j).put(-1, "");
+            }
+        }
+
+
+        for (int i = 0; i < this.graph.numberOfVertices(); i++) {
+            for (int j = 0; j < this.graph.numberOfVertices(); j++) {
                 Graph.Vertex<String> from = this.graph.getVertex(i);
                 Graph.Vertex<String> to = this.graph.getVertex(j);
 
-                if (!this.graph.hasEdge(from, to))
-                    continue;
-                for (Graph.Edge<String, String> edge : this.graph.edgesFrom(this.graph.getVertex(i))) {
+                for (Graph.Edge<String, String> edge : this.graph.edgesFrom(from)) {
                     if (edge.getTo().equals(to)) {
-                        HashMap<Integer, String> regexps = R.get(this.graph.getIndex(from)).get(this.graph.getIndex(to));
-                        boolean isInitialized = regexps.containsKey(-1);
-                        if (!isInitialized) {
-                            regexps.put(-1, edge.getWeight());
-                        } else {
-                            regexps.put(-1, regexps.get(-1) + "|" + edge.getWeight());
-                        }
+                        HashMap<Integer, String> regexps = R.get(i).get(j);
+                        String prefix = regexps.get(-1);
+                        if (!prefix.isBlank()) prefix += "|";
+                        regexps.put(-1, prefix + edge.getWeight());
                     }
                 }
-
             }
-        }
-        for (int i = 0; i < this.graph.numberOfVertices(); i++) {
-            Graph.Vertex<String> curr = this.graph.getVertex(i);
-            if (!R.containsKey(i))
-                R.put(i, new HashMap<>());
-            if (!R.get(i).containsKey(i))
-                R.get(i).put(i, new HashMap<>());
-            HashMap<Integer, String> regexps = R.get(this.graph.getIndex(curr)).get(this.graph.getIndex(curr));
-            boolean isInitialized = regexps.containsKey(-1);
-            if (!isInitialized) {
-                regexps.put(-1, eps);
-            } else {
-                regexps.put(-1, regexps.get(-1) + "|" + eps);
-            }
-
+            HashMap<Integer, String> regexps = R.get(i).get(i);
+            String prefix = regexps.get(-1);
+            if (!prefix.isBlank()) prefix += "|";
+            regexps.put(-1, prefix + eps);
         }
     }
 
@@ -232,22 +207,22 @@ public class Main {
             for (int i = 0; i < this.graph.numberOfVertices(); i++) {
                 for (int j = 0; j < this.graph.numberOfVertices(); j++) {
                     String regexp = R.get(i).get(k).get(k - 1);
-                    if (regexp == null)
+                    if (regexp.isBlank())
                         regexp = empty_set;
                     String first = "(" + regexp + ")";
 
                     regexp = R.get(k).get(k).get(k - 1);
-                    if (regexp == null)
+                    if (regexp.isBlank())
                         regexp = empty_set;
                     String second = "(" + regexp + ")*";
 
                     regexp = R.get(k).get(j).get(k - 1);
-                    if (regexp == null)
+                    if (regexp.isBlank())
                         regexp = empty_set;
                     String third = "(" + regexp + ")";
 
                     regexp = R.get(i).get(j).get(k - 1);
-                    if (regexp == null)
+                    if (regexp.isBlank())
                         regexp = empty_set;
                     String fourth = "|(" + regexp + ")";
                     R.get(i).get(j).put(k, first + second + third + fourth);
@@ -260,9 +235,9 @@ public class Main {
         int n = this.graph.numberOfVertices() - 1;
         StringBuilder sb = new StringBuilder();
         for (String finalState : this.acceptingStates) {
-            if (finalState.isBlank())
-                continue;
             String regexp = R.get(this.graph.getIndex(initialState)).get(this.graph.getIndex(finalState)).get(n);
+            if (regexp.isBlank())
+                regexp = empty_set;
             if (sb.length() == 0)
                 sb.append(regexp);
             else
@@ -272,8 +247,6 @@ public class Main {
             return empty_set;
         return sb.toString();
     }
-
-
 }
 
 /**
@@ -449,7 +422,7 @@ interface Graph<V, E> {
  * @since 2021-04-21
  */
 class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
-    HashSet<Graph.Edge<V, E>>[][] adjMatrix;
+    Collection<Graph.Edge<V, E>>[][] adjMatrix;
 
     /**
      * indices and vertices have one-to-one mapping
@@ -459,7 +432,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
 
     public AdjacencyMatrixGraph() {
         int initialSize = 0;
-        this.adjMatrix = (HashSet<Edge<V, E>>[][]) new HashSet[initialSize][initialSize];
+        this.adjMatrix = (ArrayList<Edge<V, E>>[][]) new ArrayList[initialSize][initialSize];
         this.vertices = new ArrayList<>();
         this.indices = new HashMap<>();
     }
@@ -472,14 +445,16 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
      */
     @Override
     public Graph.Vertex<V> addVertex(V value) { //O(n^2)
-        Graph.Vertex<V> v = this.findVertex(value);
-        if (v != null)
-            return v;
+        Graph.Vertex<V> v = null;
+        try {
+            return this.findVertex(value);
+        } catch (NullPointerException ignored) {
+        }
         v = new Vertex<>(value);
         this.indices.put(v, this.vertices.size());
         this.vertices.add(v);
         int newSize = this.vertices.size();
-        HashSet<Graph.Edge<V, E>>[][] temp = (HashSet<Edge<V, E>>[][]) new HashSet[newSize][newSize];
+        Collection<Graph.Edge<V, E>>[][] temp = (ArrayList<Edge<V, E>>[][]) new ArrayList[newSize][newSize];
         for (int i = 0; i < this.adjMatrix.length; i++) {
             System.arraycopy(this.adjMatrix[i], 0, temp[i], 0, this.adjMatrix[i].length);
         }
@@ -505,7 +480,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
         this.vertices.remove(this.vertices.size() - 1);
 
         int newSize = this.vertices.size();
-        HashSet<Graph.Edge<V, E>>[][] temp = (HashSet<Edge<V, E>>[][]) new HashSet[newSize][newSize];
+        Collection<Graph.Edge<V, E>>[][] temp = (ArrayList<Edge<V, E>>[][]) new ArrayList[newSize][newSize];
 
         for (int i = 0; i < vertexIndex; i++) {
             for (int j = 0; j < vertexIndex; j++) {
@@ -540,7 +515,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
             return null;
         Graph.Edge<V, E> edge = new Graph.Edge<>(from, to, weight);
         if (this.adjMatrix[this.indices.get(from)][this.indices.get(to)] == null)
-            this.adjMatrix[this.indices.get(from)][this.indices.get(to)] = new HashSet<>();
+            this.adjMatrix[this.indices.get(from)][this.indices.get(to)] = new ArrayList<>();
         this.adjMatrix[this.indices.get(from)][this.indices.get(to)].add(edge);
         return edge;
     }
@@ -581,7 +556,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
             return new ArrayList<>();
         int index = this.indices.get(v);
         Collection<Graph.Edge<V, E>> edgesTo = new ArrayList<>();
-        for (HashSet<Graph.Edge<V, E>>[] row : this.adjMatrix) {
+        for (Collection<Graph.Edge<V, E>>[] row : this.adjMatrix) {
             if (row[index] == null)
                 continue;
             for (Edge<V, E> edge : row[index]) {
@@ -601,7 +576,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
         for (Graph.Vertex<V> v : this.vertices)
             if (v.getValue().equals(value))
                 return v;
-        return null;
+        throw new NullPointerException();
     }
 
     /**
@@ -620,7 +595,7 @@ class AdjacencyMatrixGraph<V, E> implements Graph<V, E> {
             if (edge.getFrom().equals(from) && edge.getTo().equals(to))
                 return edge;
         }
-        return null;
+        throw new NullPointerException();
     }
 
     /**

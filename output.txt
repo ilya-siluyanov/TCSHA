@@ -1,2 +1,3 @@
-Error:
-E5: FSA is nondeterministic
+((eps)(eps)*(b|a|c)|(b|a|c))(({})(eps)*(b|a|c)|(eps))*(({})(eps)*(b|a|c)|(eps))|((eps)(eps)*(b|a|c)|(b|a|c))
+((eps)(eps)*(a|b|c)|(a|b|c))(({})(eps)*(a|b|c)|(eps))*(({})(eps)*(a|b|c)|(eps))|((eps)(eps)*(a|b|c)|(a|b|c))
+ли
